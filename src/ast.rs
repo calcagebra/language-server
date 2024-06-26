@@ -8,6 +8,7 @@ pub enum Ast {
     Assignment(String, Expression),
     FunctionCall(String, Vec<Expression>),
     FunctionDeclaration(String, Vec<String>, Expression),
+    Error(String)
 }
 
 #[derive(Debug, Clone, PartialEq, PartialOrd)]

@@ -1,0 +1,95 @@
+{
+  "private": true,
+  "name": "calcagebra",
+  "displayName": "calcagebra",
+  "version": "0.0.1",
+  "description": "Typechecking, autocompletion and more for calcagebra",
+  "publisher": "megatank58",
+  "icon": "icon.png",
+  "repository": {
+    "url": "https://github.com/megatank58/calcagebra.git",
+    "type": "git"
+  },
+  "license": "MIT License",
+  "categories": [
+    "Programming Languages"
+  ],
+  "keywords": [
+    "calcagebra",
+    "language server"
+  ],
+  "main": "out/main.js",
+  "scripts": {
+    "build-debug": "esbuild src/main.ts --bundle --outfile=out/main.js --external:vscode --format=cjs --platform=node --target=node20",
+    "build-release": "yarn build-debug -- --minify",
+    "package": "yarn build-release && yarn vsce package",
+    "check": "tsc"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.12.4",
+    "@types/vscode": "^1.79.0",
+    "esbuild": "^0.20.0",
+    "ovsx": "^0.9.0",
+    "typescript": "^5.1.6",
+    "@vscode/vsce": "^2.19.0"
+  },
+  "engines": {
+    "vscode": "^1.79.0"
+  },
+  "activationEvents": [
+    "workspaceContains:**/*.{cal}"
+  ],
+  "contributes": {
+    "configuration": {
+      "type": "object",
+      "title": "calcagebra",
+      "properties": {
+        "calcagebra.server.enable": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Enable the language server."
+        },
+        "calcagebra.server.fileSystemWatcher.enable": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Use a file system watcher to send events when files change, if one is available."
+        },
+        "calcagebra.server.hover.token.enable": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Show information about tokens on hover."
+        },
+        "calcagebra.server.path": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Path to the `calcagebra-ls` executable.\n\nWhen set to the empty string `\"\"` (the default), use the path to the one that's pre-built and bundled with the extension."
+        }
+      }
+    },
+    "languages": [
+      {
+        "id": "calcagebra",
+        "extensions": [
+          ".cal"
+        ],
+        "configuration": "language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "calcagebra",
+        "scopeName": "source.cal",
+        "path": "syntax.json"
+      }
+    ],
+    "snippets": [
+      {
+        "language": "calcagebra",
+        "path": "snippets.json"
+      }
+    ]
+  }
+}

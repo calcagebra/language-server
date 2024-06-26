@@ -21,9 +21,23 @@ impl Parser {
         for line in lines {
             let mut tokens = line.iter().peekable();
 
-            let identifier = tokens.next().unwrap();
+            let identifier = match tokens.next() {
+                Some(token) => token,
+                None => {
+                    ast.push(Ast::Error(
+                        "expected an identifier but none was found".to_string(),
+                    ));
+                    continue;
+                }
+            };
 
-            let is_eq = **tokens.peek().unwrap() == Token::Eq;
+            let is_eq = **match tokens.peek() {
+                Some(token) => token,
+                None => {
+                    ast.push(Ast::Error("expected an `=` but none was found".to_string()));
+                    continue;
+                }
+            } == Token::Eq;
 
             if is_eq {
                 tokens.next();
@@ -38,7 +52,10 @@ impl Parser {
             } else {
                 let name = match identifier {
                     Token::Identifier(name) => name,
-                    _ => unreachable!(),
+                    t => {
+                        ast.push(Ast::Error(format!("expected an identifier found `{t}` instead")));
+                        continue;
+                    }
                 };
 
                 if line.contains(&Token::Eq) {
@@ -55,7 +72,10 @@ impl Parser {
 
                         args.push(match t {
                             Token::Identifier(i) => i.to_string(),
-                            _ => unreachable!(),
+                            t => {
+                                ast.push(Ast::Error(format!("expected an identifier found `{t}` instead")));
+                                continue;
+                            }
                         })
                     }
                     tokens.next();
@@ -68,7 +88,10 @@ impl Parser {
                         Expression::FunctionCall(name, args) => {
                             ast.push(Ast::FunctionCall(name.to_string(), args))
                         }
-                        _ => unreachable!(),
+                        t => {
+                            ast.push(Ast::Error(format!("expected a function call found `{t}` instead")));
+                            continue;
+                        }
                     }
                 }
             }
@@ -95,7 +118,9 @@ impl Parser {
                 } else if tokens.peek().is_some()
                     && *tokens.peek().unwrap() == &Token::Differentiate
                 {
-                    expr = Some(Expression::Differentiate(Box::new(Expression::Identifier(i.to_string()))));
+                    expr = Some(Expression::Differentiate(Box::new(Expression::Identifier(
+                        i.to_string(),
+                    ))));
                     tokens.next();
                 } else {
                     expr = Some(Expression::Identifier(i.to_string()));

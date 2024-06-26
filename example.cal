@@ -1,3 +1,2 @@
-f: R -> R
-f x = 3x^2
-print(f`)
+squareoftwo = 4
+cube x = x^3
