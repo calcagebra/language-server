@@ -1,2 +1,5 @@
-squareoftwo = 4
-cube x = x^3
+radius = read()
+
+circumference = 2*pi*radius
+
+print(radius)

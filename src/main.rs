@@ -2,6 +2,7 @@ mod ast;
 mod errors;
 mod lexer;
 mod parser;
+mod standardlibrary;
 mod token;
 
 use ast::Ast;
@@ -11,6 +12,7 @@ use lexer::Lexer;
 use parser::Parser;
 use serde_json::Value;
 use simsearch::{SearchOptions, SimSearch};
+use standardlibrary::StandardLibrary;
 use token::Token;
 use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::*;
@@ -116,7 +118,8 @@ impl LanguageServer for Backend {
 
     async fn did_change(&self, param: DidChangeTextDocumentParams) {
         self.file.clear();
-        let lines = param.content_changes[0].text
+        let lines = param.content_changes[0]
+            .text
             .lines()
             .map(|f| f.to_string())
             .collect::<Vec<String>>();
@@ -126,10 +129,7 @@ impl LanguageServer for Backend {
         }
 
         self.client
-            .log_message(
-                MessageType::INFO,
-                "file changed!",
-            )
+            .log_message(MessageType::INFO, "file changed!")
             .await;
     }
 
@@ -153,9 +153,16 @@ impl LanguageServer for Backend {
             .collect::<Vec<String>>()
             .join("\n");
 
-        let mut variables = vec![];
+        let mut variables = vec!["π".to_string(), "pi".to_string(), "e".to_string()];
         let mut functions = vec![];
         let tokens = Token::dictionary();
+        let mut std = StandardLibrary::new();
+        std.init_std();
+        let std_functions = std
+            .map
+            .keys()
+            .map(|f| f.to_string())
+            .collect::<Vec<String>>();
 
         let lex = Lexer::new(file).tokens();
         Parser::new(lex)
@@ -173,7 +180,8 @@ impl LanguageServer for Backend {
         let line = self.file.get(&line).unwrap().to_string();
         let mut text = String::new();
         for (i, char) in line.split("").enumerate() {
-            if char == " " {
+            let c = char.chars().next();
+            if c.is_some() && !c.unwrap().is_ascii_alphabetic() {
                 text = String::new()
             }
             text += char;
@@ -212,7 +220,19 @@ impl LanguageServer for Backend {
             })
         });
 
-        self.client.log_message(MessageType::LOG, format!("{responses:?} {text} {line}")).await;
+        self.get_closest_match(&text, std_functions)
+            .iter()
+            .for_each(|f| {
+                responses.push(CompletionItem {
+                    label: f.to_string(),
+                    documentation: Some(Documentation::MarkupContent(MarkupContent {
+                        kind: MarkupKind::Markdown,
+                        value: std.map.get(f.to_string().as_str()).unwrap().to_string(),
+                    })),
+                    kind: Some(CompletionItemKind::FUNCTION),
+                    ..Default::default()
+                })
+            });
 
         Ok(Some(CompletionResponse::Array(responses)))
     }
