@@ -162,10 +162,10 @@ impl Display for Expression {
         write!(
             f,
             "{}",
-            match self {
+            match self.flatten() {
                 Expression::Abs(expr) => format!("|{expr}|"),
                 Expression::Binary(e1, op, e2) => {
-                    if *op == Token::Mul {
+                    if op == Token::Mul {
                         if Expression::Number(0.0) == *e1.to_owned()
                             || Expression::Number(0.0) == *e2.to_owned()
                         {
@@ -175,9 +175,9 @@ impl Display for Expression {
                         } else if Expression::Number(1.0) == *e2.to_owned() {
                             format!("{e1}")
                         } else {
-                            format!("{e1}{e2}")
+                            format!("{e1}{op}{e2}")
                         }
-                    } else if *op == Token::Pow {
+                    } else if op == Token::Pow {
                         if Expression::Number(0.0) == *e2.to_owned() {
                             String::from("1")
                         } else if Expression::Number(1.0) == *e2.to_owned() {

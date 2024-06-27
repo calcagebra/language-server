@@ -155,10 +155,11 @@ impl LanguageServer for Backend {
 
         let mut variables = vec!["π".to_string(), "pi".to_string(), "e".to_string()];
         let mut functions = vec![];
+        let functions_docs = DashMap::new();
         let tokens = Token::dictionary();
         let mut std = StandardLibrary::new();
         std.init_std();
-        let std_functions = std
+        let std_docs = std
             .map
             .keys()
             .map(|f| f.to_string())
@@ -171,7 +172,10 @@ impl LanguageServer for Backend {
             .filter(|f| matches!(f, Ast::Assignment(_, _) | Ast::FunctionDeclaration(_, _, _)))
             .for_each(|f| match f {
                 Ast::Assignment(ident, _) => variables.push(ident.to_string()),
-                Ast::FunctionDeclaration(name, _, _) => functions.push(name.to_string()),
+                Ast::FunctionDeclaration(name, args, expr) => {
+                    functions_docs.insert(name.to_string(), format!("{name} {} = {expr}", args.join(" ")));
+                    functions.push(name.to_string());
+                },
                 _ => unreachable!(),
             });
 
@@ -207,6 +211,10 @@ impl LanguageServer for Backend {
             .for_each(|f| {
                 responses.push(CompletionItem {
                     label: f.to_string(),
+                    documentation: Some(Documentation::MarkupContent(MarkupContent {
+                        kind: MarkupKind::PlainText,
+                        value: functions_docs.get(f).unwrap().to_string(),
+                    })),
                     kind: Some(CompletionItemKind::FUNCTION),
                     ..Default::default()
                 })
@@ -220,7 +228,7 @@ impl LanguageServer for Backend {
             })
         });
 
-        self.get_closest_match(&text, std_functions)
+        self.get_closest_match(&text, std_docs)
             .iter()
             .for_each(|f| {
                 responses.push(CompletionItem {

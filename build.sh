@@ -4,4 +4,4 @@ cd editors/vscode
 yarn
 yarn package
 cd ../../
-mv editors/vscode/calcagebra* .
+mv editors/vscode/calcagebra-* .

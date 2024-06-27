@@ -72,23 +72,14 @@
     "languages": [
       {
         "id": "calcagebra",
+        "icon": {
+          "light": "./icon.png",
+          "dark": "./icon.png"
+        },
         "extensions": [
           ".cal"
         ],
-        "configuration": "language-configuration.json"
-      }
-    ],
-    "grammars": [
-      {
-        "language": "calcagebra",
-        "scopeName": "source.cal",
-        "path": "syntax.json"
-      }
-    ],
-    "snippets": [
-      {
-        "language": "calcagebra",
-        "path": "snippets.json"
+        "configuration": "./language-configuration.json"
       }
     ]
   }
