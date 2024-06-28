@@ -43,6 +43,30 @@
     "workspaceContains:**/*.{cal}"
   ],
   "contributes": {
+    "languages": [
+      {
+        "id": "calcagebra",
+        "icon": {
+          "light": "./icon.png",
+          "dark": "./icon.png"
+        },
+        "aliases": [
+          "calcagebra",
+          "calcagebra"
+        ],
+        "extensions": [
+          ".cal"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "calcagebra",
+        "scopeName": "source.calcagebra",
+        "path": "./syntaxes/calcagebra.tmLanguage.json"
+      }
+    ],
     "configuration": {
       "type": "object",
       "title": "calcagebra",
@@ -51,11 +75,6 @@
           "type": "boolean",
           "default": true,
           "markdownDescription": "Enable the language server."
-        },
-        "calcagebra.server.fileSystemWatcher.enable": {
-          "type": "boolean",
-          "default": true,
-          "markdownDescription": "Use a file system watcher to send events when files change, if one is available."
         },
         "calcagebra.server.hover.token.enable": {
           "type": "boolean",
@@ -68,19 +87,6 @@
           "markdownDescription": "Path to the `calcagebra-ls` executable.\n\nWhen set to the empty string `\"\"` (the default), use the path to the one that's pre-built and bundled with the extension."
         }
       }
-    },
-    "languages": [
-      {
-        "id": "calcagebra",
-        "icon": {
-          "light": "./icon.png",
-          "dark": "./icon.png"
-        },
-        "extensions": [
-          ".cal"
-        ],
-        "configuration": "./language-configuration.json"
-      }
-    ]
+    }
   }
 }

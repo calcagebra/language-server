@@ -1,5 +1,7 @@
-radius = read()
+"abc"
 
-circumference = 2*pi*radius
+// aaa
 
-print(radius)
+"\""
+
+if

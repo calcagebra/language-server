@@ -28,7 +28,6 @@ export async function activate(cx: vscode.ExtensionContext) {
     documentSelector: [{ scheme: "file", language: "calcagebra", pattern: "**/*.{cal}" }],
     initializationOptions: {
       token_hover: config.get("server.hover.token.enable"),
-      fs_watcher: config.get("server.fileSystemWatcher.enable"),
       diagnostics: {
         on_change: config.get("server.diagnostics.onChange.enable"),
         more_info_hint: config.get("server.diagnostics.moreInfoHint.enable"),
