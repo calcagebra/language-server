@@ -173,10 +173,13 @@ impl LanguageServer for Backend {
             .for_each(|f| match f {
                 Ast::Assignment(ident, _) => variables.push(ident.to_string()),
                 Ast::FunctionDeclaration(name, args, expr) => {
-                    functions_docs.insert(name.to_string(), format!("{name} {} = {expr}", args.join(" ")));
+                    functions_docs.insert(
+                        name.to_string(),
+                        format!("{name} {} = {expr}", args.join(" ")),
+                    );
                     functions.push(name.to_string());
-                },
-                _ => unreachable!(),
+                }
+                _ => {},
             });
 
         let line = param.text_document_position.position.line as usize;
@@ -245,9 +248,65 @@ impl LanguageServer for Backend {
         Ok(Some(CompletionResponse::Array(responses)))
     }
 
-    async fn hover(&self, _: HoverParams) -> Result<Option<Hover>> {
+    async fn hover(&self, param: HoverParams) -> Result<Option<Hover>> {
+        let file = &self
+            .file
+            .iter()
+            .map(|f| f.to_string())
+            .collect::<Vec<String>>()
+            .join("\n");
+
+        let mut functions = vec![];
+        let functions_docs = DashMap::new();
+        let mut std = StandardLibrary::new();
+        std.init_std();
+        let std_docs = std
+            .map
+            .keys()
+            .map(|f| f.to_string())
+            .collect::<Vec<String>>();
+
+        let lex = Lexer::new(file).tokens();
+        Parser::new(lex)
+            .ast()
+            .iter()
+            .filter(|f| matches!(f, Ast::Assignment(_, _) | Ast::FunctionDeclaration(_, _, _)))
+            .for_each(|f| {
+                if let Ast::FunctionDeclaration(name, args, expr) = f {
+                    functions_docs.insert(
+                        name.to_string(),
+                        format!("{name} {} = {expr}", args.join(" ")),
+                    );
+                    functions.push(name.to_string());
+                }
+            });
+
+        let line = param.text_document_position_params.position.line as usize;
+        let character = param.text_document_position_params.position.character as usize;
+        let line = self.file.get(&line).unwrap().to_string();
+        let mut text = String::new();
+
+        for (i, char) in line.split("").enumerate() {
+            let c = char.chars().next();
+            if c.is_some() && !c.unwrap().is_ascii_alphabetic() {
+                text = String::new()
+            }
+            text += char;
+            if i == character {
+                break;
+            }
+        }
+
+        let response = if functions.binary_search(&text).is_ok() {
+            MarkedString::String(functions_docs.get(&text).unwrap().to_string())
+        } else if std_docs.binary_search(&text).is_ok() {
+            MarkedString::String(std.map.get(text.to_string().as_str()).unwrap().to_string())
+        } else {
+            MarkedString::String(String::new())
+        };
+
         Ok(Some(Hover {
-            contents: HoverContents::Array(vec![]),
+            contents: HoverContents::Array(vec![response]),
             range: None,
         }))
     }
