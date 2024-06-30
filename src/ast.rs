@@ -21,91 +21,10 @@ pub enum Expression {
     Number(f32),
     SizedSet(Vec<Expression>),
     UnsizedSet(Vec<Expression>, Vec<Expression>),
-    FunctionCall(String, Vec<Expression>),
-    Undefined,
+    FunctionCall(String, Vec<Expression>)
 }
 
 impl Expression {
-    pub fn differentiate(&self, args: &[String]) -> Expression {
-        match self {
-            Expression::Binary(e1, op, e2) => match op {
-                Token::Add | Token::Sub => Expression::Binary(
-                    Box::new(e1.differentiate(args)),
-                    op.to_owned(),
-                    Box::new(e2.differentiate(args)),
-                ),
-                Token::Mul => Expression::Binary(
-                    Box::new(Expression::Binary(
-                        Box::new(e1.differentiate(args)),
-                        Token::Mul,
-                        e2.to_owned(),
-                    )),
-                    Token::Add,
-                    Box::new(Expression::Binary(
-                        e1.to_owned(),
-                        Token::Mul,
-                        Box::new(e2.differentiate(args)),
-                    )),
-                ),
-                Token::Div => Expression::Binary(
-                    Box::new(Expression::Binary(
-                        Box::new(Expression::Binary(
-                            Box::new(e1.differentiate(args)),
-                            Token::Mul,
-                            e2.to_owned(),
-                        )),
-                        Token::Sub,
-                        Box::new(Expression::Binary(
-                            e1.to_owned(),
-                            Token::Mul,
-                            Box::new(e2.differentiate(args)),
-                        )),
-                    )),
-                    Token::Div,
-                    Box::new(Expression::Binary(
-                        e2.to_owned(),
-                        Token::Pow,
-                        Box::new(Expression::Number(2.0)),
-                    )),
-                ),
-                Token::Pow => Expression::Binary(
-                    e2.to_owned(),
-                    Token::Mul,
-                    Box::new(Expression::Binary(
-                        e1.to_owned(),
-                        Token::Pow,
-                        Box::new(match *e2.to_owned() {
-                            Expression::Identifier(_) => Expression::Binary(
-                                e2.to_owned(),
-                                Token::Sub,
-                                Box::new(Expression::Number(1.0)),
-                            ),
-                            Expression::Number(n) => *Box::new(Expression::Number(n - 1.0)),
-                            _ => unimplemented!(),
-                        }),
-                    )),
-                ),
-                _ => unimplemented!(),
-            },
-            Expression::Branched(_, _, _) => todo!(),
-            Expression::Differentiate(expr) => expr.differentiate(args).differentiate(args),
-            Expression::Identifier(ident) => {
-                if args.contains(ident) {
-                    Expression::Number(1.0)
-                } else {
-                    Expression::Number(0.0)
-                }
-            }
-            Expression::Number(_) => Expression::Number(0.0),
-
-            Expression::Abs(_)
-            | Expression::SizedSet(_)
-            | Expression::UnsizedSet(_, _)
-            | Expression::FunctionCall(_, _) => unimplemented!(),
-            Expression::Undefined => todo!(),
-        }.flatten()
-    }
-
     pub fn flatten(&self) -> Expression {
         match self {
             Expression::Binary(e1, op, e2) => match (*e1.to_owned(), op, *e2.to_owned()) {
@@ -227,7 +146,6 @@ impl Display for Expression {
                         .collect::<Vec<_>>()
                         .join(",")
                 ),
-                Expression::Undefined => "UNDEFINED".to_string(),
             }
         )
     }

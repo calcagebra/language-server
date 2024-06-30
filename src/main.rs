@@ -40,6 +40,7 @@ impl LanguageServer for Backend {
                     all_commit_characters: None,
                     ..Default::default()
                 }),
+                hover_provider: Some(HoverProviderCapability::Simple(true)),
                 execute_command_provider: Some(ExecuteCommandOptions {
                     commands: vec![],
                     work_done_progress_options: Default::default(),
@@ -146,6 +147,10 @@ impl LanguageServer for Backend {
     }
 
     async fn completion(&self, param: CompletionParams) -> Result<Option<CompletionResponse>> {
+        self.client
+            .log_message(MessageType::INFO, "completion requested!")
+            .await;
+
         let file = &self
             .file
             .iter()
@@ -179,7 +184,7 @@ impl LanguageServer for Backend {
                     );
                     functions.push(name.to_string());
                 }
-                _ => {},
+                _ => {}
             });
 
         let line = param.text_document_position.position.line as usize;
@@ -249,6 +254,10 @@ impl LanguageServer for Backend {
     }
 
     async fn hover(&self, param: HoverParams) -> Result<Option<Hover>> {
+        self.client
+            .log_message(MessageType::INFO, "hover requested!")
+            .await;
+
         let file = &self
             .file
             .iter()
@@ -285,15 +294,19 @@ impl LanguageServer for Backend {
         let character = param.text_document_position_params.position.character as usize;
         let line = self.file.get(&line).unwrap().to_string();
         let mut text = String::new();
+        let mut pos_found = false;
 
         for (i, char) in line.split("").enumerate() {
             let c = char.chars().next();
             if c.is_some() && !c.unwrap().is_ascii_alphabetic() {
+                if pos_found {
+                    break;
+                }
                 text = String::new()
             }
             text += char;
             if i == character {
-                break;
+                pos_found = true;
             }
         }
 
