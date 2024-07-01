@@ -1,9 +1,8 @@
 {
-  "private": true,
   "name": "calcagebra",
   "displayName": "calcagebra",
-  "version": "0.0.1",
-  "description": "Typechecking, autocompletion and more for calcagebra",
+  "version": "1.0.0",
+  "description": "Language server for calcagebra programming language, providing completion, hover support and syntax highlighting!",
   "publisher": "megatank58",
   "icon": "icon.png",
   "repository": {
