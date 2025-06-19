@@ -1,167 +1,320 @@
-use std::{iter::Peekable, slice::Iter};
+use std::{iter::Peekable, ops::RangeInclusive, slice::Iter};
 
 use crate::{
-    ast::{Ast, Expression},
-    token::Token,
+    ast::{AstNode, Expression},
+    token::{Token, TokenInfo},
+    types::NumberType,
 };
 
 pub struct Parser {
-    tokens: Vec<Vec<Token>>,
+    tokens: Vec<Vec<TokenInfo>>,
 }
 
 impl Parser {
-    pub fn new(tokens: Vec<Vec<Token>>) -> Self {
+    pub fn new(tokens: Vec<Vec<TokenInfo>>) -> Self {
         Self { tokens }
     }
 
-    pub fn ast(&self) -> Vec<Ast> {
+    pub fn ast(&self) -> Option<Vec<AstNode>> {
         let mut ast = vec![];
         let lines = &self.tokens;
 
         for line in lines {
             let mut tokens = line.iter().peekable();
 
-            let identifier = match tokens.next() {
-                Some(token) => token,
-                None => {
-                    ast.push(Ast::Error(
-                        "expected an identifier but none was found".to_string(),
-                    ));
-                    continue;
-                }
-            };
+            let identifier = tokens.next()?;
 
-            let is_eq = **match tokens.peek() {
-                Some(token) => token,
-                None => {
-                    ast.push(Ast::Error("expected an `=` but none was found".to_string()));
-                    continue;
-                }
-            } == Token::Eq;
+            match identifier.token {
+                Token::Let => {
+                    let mut datatype = None;
 
-            if is_eq {
-                tokens.next();
-                let mut name = "";
-                if let Token::Identifier(str) = identifier {
-                    name = str;
-                }
+                    if tokens.peek()?.token == Token::Colon {
+                        tokens.next();
 
-                let expr = self.pratt_parser(tokens, 0).0;
+                        if let Token::Identifier(ident) = &tokens.peek()?.token {
+                            tokens.next();
 
-                ast.push(Ast::Assignment(name.to_string(), expr));
-            } else {
-                let name = match identifier {
-                    Token::Identifier(name) => name,
-                    t => {
-                        ast.push(Ast::Error(format!("expected an identifier found `{t}` instead")));
-                        continue;
+                            datatype = Some(NumberType::parse(ident))
+                        } else {
+                            let tokeninfo = tokens.next()?;
+
+                            todo!()
+                        }
                     }
-                };
 
-                if line.contains(&Token::Eq) {
+                    let name = match &tokens.next()?.token {
+                        Token::Identifier(name) => name,
+                        _ => unreachable!(),
+                    };
+
+                    tokens.next(); // `=`
+
+                    let (expr, _, range) = self.pratt_parser(tokens, 0);
+
+                    let expr_type = expr.infer_datatype();
+
+                    if datatype.is_none() {
+                        datatype = expr_type
+                    }
+
+                    if let Some(expression_type) = expr_type {
+                        if expr_type? != datatype? {
+                            todo!()
+                        }
+                    }
+
+                    ast.push(AstNode::Assignment((name.to_string(), datatype), expr));
+                }
+                Token::Fn => {
+                    let name = match &tokens.next()?.token {
+                        Token::Identifier(name) => name,
+                        _ => unreachable!(),
+                    };
+
+                    tokens.next(); // `(`
+
                     let mut args = vec![];
 
                     loop {
                         let t = tokens.peek();
 
-                        if t.is_none() || **t.unwrap() == Token::Eq {
+                        if t.is_none() {
                             break;
                         }
 
-                        let t = tokens.next().unwrap();
-
-                        args.push(match t {
-                            Token::Identifier(i) => i.to_string(),
-                            t => {
-                                ast.push(Ast::Error(format!("expected an identifier found `{t}` instead")));
-                                continue;
-                            }
-                        })
-                    }
-                    tokens.next();
-                    let expr = self.pratt_parser(tokens, 0).0;
-                    ast.push(Ast::FunctionDeclaration(name.to_string(), args, expr));
-                } else {
-                    let (args, _) = self.pratt_parser(line.iter().peekable(), 0);
-
-                    match args {
-                        Expression::FunctionCall(name, args) => {
-                            ast.push(Ast::FunctionCall(name.to_string(), args))
+                        if Token::RParen == t?.token {
+                            tokens.next();
+                            break;
                         }
-                        t => {
-                            ast.push(Ast::Error(format!("expected a function call found `{t}` instead")));
-                            continue;
+
+                        let t = tokens.next()?;
+
+                        let mut datatype = Some(NumberType::Real);
+
+                        if tokens.peek()?.token == Token::Colon {
+                            tokens.next();
+
+                            if let Token::Identifier(ident) = &tokens.peek()?.token {
+                                tokens.next();
+
+                                datatype = Some(NumberType::parse(ident))
+                            } else {
+                                let tokeninfo = tokens.next()?;
+
+                                todo!()
+                            }
+                        }
+
+                        args.push((
+                            match &t.token {
+                                Token::Identifier(i) => i.to_string(),
+                                _ => unreachable!(),
+                            },
+                            datatype?,
+                        ));
+                    }
+
+                    let mut return_type = Some(NumberType::Real);
+
+                    if tokens.peek()?.token == Token::Colon {
+                        tokens.next();
+
+                        if let Token::Identifier(ident) = &tokens.peek()?.token {
+                            tokens.next();
+
+                            return_type = Some(NumberType::parse(ident))
+                        } else {
+                            let tokeninfo = tokens.next()?;
+
+                            todo!()
+                        }
+                    }
+
+                    let tokeninfo = tokens.next()?;
+
+                    if tokeninfo.token != Token::Eq {
+                        todo!()
+                    }
+
+                    let (expr, _, range) = self.pratt_parser(tokens, 0);
+
+                    let expr_type = expr.infer_datatype();
+
+                    if let Some(expression_type) = expr_type {
+                        if expr_type? != return_type? {
+                            todo!()
+                        }
+                    }
+
+                    ast.push(AstNode::FunctionDeclaration(
+                        name.to_string(),
+                        args,
+                        return_type?,
+                        expr,
+                    ));
+                }
+                _ => {
+                    if !line.is_empty() {
+                        let args = self.pratt_parser(line.iter().peekable(), 0).0;
+
+                        if let Expression::FunctionCall(name, args) = args {
+                            ast.push(AstNode::FunctionCall(name.to_string(), args))
                         }
                     }
                 }
             }
         }
-
-        ast
+        Some(ast)
     }
 
-    pub fn pratt_parser<'a>(
-        &'a self,
-        mut tokens: Peekable<Iter<'a, Token>>,
+    pub fn pratt_parser<'b>(
+        &'b self,
+        mut tokens: Peekable<Iter<'b, TokenInfo>>,
         prec: u16,
-    ) -> (Expression, Peekable<Iter<Token>>) {
-        let token = tokens.next().unwrap();
+    ) -> (
+        Expression,
+        Peekable<Iter<'b, TokenInfo>>,
+        RangeInclusive<usize>,
+    ) {
+        let tokeninfo = &tokens.next().unwrap();
+
+        let token = &tokeninfo.token;
         let mut expr: Option<Expression> = None;
+
+        let start = *tokeninfo.range.start();
+        let mut end = *tokeninfo.range.end();
+
         match token {
             Token::Identifier(i) => {
+                // An identifier can either be a function call, in multiplication with a mod
+                // or simply an identifier, eg read(), a|b|, c
+
                 if tokens.peek().is_some()
-                    && self.infix_binding_power(tokens.peek().unwrap()) == (0, 0)
-                    && ![Token::RParen, Token::VLine, Token::Differentiate]
-                        .contains(*tokens.peek().unwrap())
+                    && self.infix_binding_power(&tokens.peek().unwrap().token) == (0, 0)
+                    && ![Token::RParen, Token::Abs].contains(&tokens.peek().unwrap().token)
                 {
-                    (expr, tokens) = self.parse_fn(tokens, i.clone());
-                } else if tokens.peek().is_some()
-                    && *tokens.peek().unwrap() == &Token::Differentiate
-                {
-                    expr = Some(Expression::Differentiate(Box::new(Expression::Identifier(
-                        i.to_string(),
-                    ))));
-                    tokens.next();
+                    (expr, tokens, end) = self.parse_fn(tokens, i.clone());
                 } else {
-                    expr = Some(Expression::Identifier(i.to_string()));
-                }
+                    end = *tokeninfo.range.end();
+                    expr = Some(Expression::Identifier(i.to_string()))
+                };
             }
             Token::LParen => {
                 let exp;
-                (exp, tokens) = self.pratt_parser(tokens, 0);
+                let range;
+
+                (exp, tokens, range) = self.pratt_parser(tokens, 0);
+
+                end = *range.end();
                 expr = Some(exp);
                 tokens.next();
             }
-            Token::VLine => {
+            Token::LSquare => {
+                let mut matrix = vec![];
+
+                let mut row = vec![];
+
+                let mut row_tokens: Vec<TokenInfo> = vec![];
+
+                loop {
+                    let t = tokens.peek();
+
+                    if t.is_none() {
+                        break;
+                    }
+
+                    let t = tokens.next().unwrap();
+
+                    if t.token == Token::RSquare {
+                        if !row_tokens.is_empty() {
+                            let exp;
+
+                            (exp, _, _) = self.pratt_parser(row_tokens.iter().peekable(), 0);
+
+                            row.push(exp);
+                        }
+
+                        end = *t.range.end();
+                        matrix.push(row);
+                        break;
+                    }
+
+                    if t.token == Token::SemiColon {
+                        if !row_tokens.is_empty() {
+                            let exp;
+
+                            (exp, _, _) = self.pratt_parser(row_tokens.iter().peekable(), 0);
+
+                            row.push(exp);
+                            row_tokens.clear();
+                        }
+                        end = *t.range.end();
+                        matrix.push(row.clone());
+                        row.clear();
+                        continue;
+                    }
+
+                    if t.token == Token::Comma {
+                        let exp;
+
+                        (exp, _, _) = self.pratt_parser(row_tokens.iter().peekable(), 0);
+
+                        row.push(exp);
+                        row_tokens.clear();
+                        continue;
+                    }
+
+                    end = *t.range.end();
+                    row_tokens.push((*t).clone());
+                }
+
+                expr = Some(Expression::Matrix(matrix));
+            }
+            Token::Abs => {
                 let exp;
-                (exp, tokens) = self.pratt_parser(tokens, 0);
+                let range;
+
+                (exp, tokens, range) = self.pratt_parser(tokens, 0);
+
+                end = *range.end();
                 expr = Some(Expression::Abs(Box::new(exp)));
                 tokens.next();
             }
             Token::If => {
-                (expr, tokens) = self.parse_if(tokens);
-            }
-            Token::LCurly => {
-                (expr, tokens) = self.parse_set(tokens);
+                (expr, tokens, end) = self.parse_if(tokens);
             }
             Token::Sub => {
-                if let Token::Number(i) = tokens.peek().unwrap() {
-                    expr = Some(Expression::Number(-i));
-                    tokens.next();
+                if let Token::Integer(i) = tokens.peek().unwrap().token {
+                    expr = Some(Expression::Integer(-i));
+                    end = *tokens.next().unwrap().range.end();
+                } else if let Token::Float(i) = tokens.peek().unwrap().token {
+                    expr = Some(Expression::Real(-i));
+                    end = *tokens.next().unwrap().range.end();
+                } else {
+                    end = *tokeninfo.range.end();
                 }
             }
-            Token::Number(n) => expr = Some(Expression::Number(*n)),
-            _ => {}
+            Token::Integer(n) => {
+                expr = Some(Expression::Integer(*n));
+                end = *tokeninfo.range.end();
+            }
+            Token::Float(n) => {
+                expr = Some(Expression::Real(*n));
+                end = *tokeninfo.range.end();
+            }
+            _ => {
+                end = *tokeninfo.range.end();
+            }
         };
 
         loop {
             let op = tokens.peek();
 
-            if op.is_none() || [Token::RParen, Token::VLine].contains(op.unwrap()) {
+            if op.is_none() || [Token::RParen, Token::Abs].contains(&op.unwrap().token) {
                 break;
             }
 
-            let (lbp, rbp) = self.infix_binding_power(op.unwrap());
+            let (lbp, rbp) = self.infix_binding_power(&op.unwrap().token);
 
             if lbp < prec {
                 break;
@@ -170,41 +323,50 @@ impl Parser {
             let op = tokens.next().unwrap();
 
             let rhs;
-            (rhs, tokens) = self.pratt_parser(tokens, rbp);
+            let range;
+
+            (rhs, tokens, range) = self.pratt_parser(tokens, rbp);
+
+            end = *range.end();
             expr = Some(Expression::Binary(
                 Box::new(expr.unwrap()),
-                op.clone(),
+                op.token.clone(),
                 Box::new(rhs),
             ));
         }
 
-        (expr.unwrap(), tokens)
+        (expr.unwrap(), tokens, start..=end)
     }
 
-    pub fn parse_fn<'a>(
-        &'a self,
-        mut tokens: Peekable<Iter<'a, Token>>,
+    pub fn parse_fn<'b>(
+        &'b self,
+        mut tokens: Peekable<Iter<'b, TokenInfo>>,
         i: String,
-    ) -> (Option<Expression>, Peekable<Iter<'a, Token>>) {
+    ) -> (Option<Expression>, Peekable<Iter<'b, TokenInfo>>, usize) {
         let mut depth = 0;
         let mut params = vec![];
         let mut expression = vec![];
 
-        tokens.next();
+        let mut end = *tokens.next().unwrap().range.end();
 
         loop {
-            let token = tokens.next();
+            let tokeninfo = tokens.next();
 
-            if token.is_none() {
+            if tokeninfo.is_none() {
                 break;
             }
 
-            let token = token.unwrap();
+            let tokeninfo = &tokeninfo.unwrap();
+
+            let token = &tokeninfo.token;
+
+            end = *tokeninfo.range.end();
+
             if *token == Token::RParen {
                 if depth == 0 {
                     if !expression.is_empty() && depth == 0 {
                         let lex = expression.iter().peekable();
-                        let (data, _) = self.pratt_parser(lex, 0);
+                        let data = self.pratt_parser(lex, 0).0;
 
                         params.push(data);
                         expression.clear();
@@ -214,17 +376,13 @@ impl Parser {
                 depth -= 1;
             }
 
-            if *token == Token::RCurly {
-                depth -= 1;
-            }
-
-            if *token == Token::LParen || *token == Token::LCurly {
+            if *token == Token::LParen {
                 depth += 1;
             }
 
             if *token == Token::Comma && depth == 0 {
                 let lex = expression.iter().peekable();
-                let (data, _) = self.pratt_parser(lex, 0);
+                let data = self.pratt_parser(lex, 0).0;
 
                 params.push(data);
 
@@ -232,11 +390,11 @@ impl Parser {
                 continue;
             }
 
-            expression.push(token.to_owned());
+            expression.push((*tokeninfo).to_owned());
         }
         if !expression.is_empty() {
             let lex = expression.iter().peekable();
-            let (data, _) = self.pratt_parser(lex, 0);
+            let data = self.pratt_parser(lex, 0).0;
 
             params.push(data);
             expression.clear();
@@ -245,29 +403,36 @@ impl Parser {
         (
             Some(Expression::FunctionCall(i.to_string(), params)),
             tokens,
+            end,
         )
     }
 
-    pub fn parse_if<'a>(
-        &'a self,
-        mut tokens: Peekable<Iter<'a, Token>>,
-    ) -> (Option<Expression>, Peekable<Iter<'a, Token>>) {
+    pub fn parse_if<'b>(
+        &'b self,
+        mut tokens: Peekable<Iter<'b, TokenInfo>>,
+    ) -> (Option<Expression>, Peekable<Iter<'b, TokenInfo>>, usize) {
         let mut depth = 1;
         let mut params = vec![];
         let mut expression = vec![];
 
-        loop {
-            let token = tokens.next();
+        let mut end = *tokens.peek().unwrap().range.end();
 
-            if token.is_none() {
+        loop {
+            let tokeninfo = tokens.next();
+
+            if tokeninfo.is_none() {
                 break;
             }
 
-            let token = token.unwrap();
+            let tokeninfo = &tokeninfo.unwrap();
+
+            let token = &tokeninfo.token;
+
+            end = *tokeninfo.range.end();
 
             if *token == Token::Then || *token == Token::Else {
                 let lex = expression.iter().peekable();
-                let (data, _) = self.pratt_parser(lex, 0);
+                let data = self.pratt_parser(lex, 0).0;
 
                 params.push(data);
                 expression.clear();
@@ -285,12 +450,12 @@ impl Parser {
                 }
             }
 
-            expression.push(token.to_owned());
+            expression.push((*tokeninfo).to_owned());
         }
 
         if !expression.is_empty() {
             let lex = expression.iter().peekable();
-            let (data, _) = self.pratt_parser(lex, 0);
+            let data = self.pratt_parser(lex, 0).0;
 
             params.push(data);
             expression.clear();
@@ -303,115 +468,23 @@ impl Parser {
                 Box::new(params[2].clone()),
             )),
             tokens,
+            end,
         )
-    }
-
-    pub fn parse_set<'a>(
-        &'a self,
-        mut tokens: Peekable<Iter<'a, Token>>,
-    ) -> (Option<Expression>, Peekable<Iter<'a, Token>>) {
-        let mut depth = 1;
-        let mut params = vec![];
-        let mut expression = vec![];
-
-        let mut is_unsized_set = false;
-
-        loop {
-            let token = tokens.next();
-
-            if token.is_none() {
-                break;
-            }
-
-            let token = token.unwrap();
-
-            if *token == Token::Colon && depth == 1 {
-                is_unsized_set = true;
-                let lex = expression.iter().peekable();
-                let (data, _) = self.pratt_parser(lex, 0);
-
-                params.push(data);
-                expression.clear();
-                continue;
-            }
-
-            if *token == Token::RCurly {
-                if !expression.is_empty() {
-                    let lex = expression.iter().peekable();
-                    let (data, _) = self.pratt_parser(lex, 0);
-
-                    params.push(data);
-                    expression.clear();
-                    depth -= 1;
-                    continue;
-                }
-
-                depth -= 1;
-
-                if depth == 0 {
-                    break;
-                }
-            }
-
-            if *token == Token::LCurly {
-                depth += 1;
-            }
-
-            if *token == Token::Comma && depth == 1 {
-                if !expression.is_empty() {
-                    let lex = expression.iter().peekable();
-                    let (data, _) = self.pratt_parser(lex, 0);
-
-                    params.push(data);
-
-                    expression.clear();
-                }
-                continue;
-            }
-
-            expression.push(token.to_owned());
-        }
-
-        if !expression.is_empty() {
-            let lex = expression.iter().peekable();
-            let (data, _) = self.pratt_parser(lex, 0);
-
-            params.push(data);
-            expression.clear();
-        }
-
-        if is_unsized_set {
-            let mut idents = vec![];
-            let mut conditions = vec![];
-
-            for param in params {
-                if let Expression::Identifier(_) = param {
-                    idents.push(param);
-                } else {
-                    conditions.push(param);
-                }
-            }
-
-            (Some(Expression::UnsizedSet(idents, conditions)), tokens)
-        } else {
-            (Some(Expression::SizedSet(params)), tokens)
-        }
     }
 
     fn infix_binding_power(&self, op: &Token) -> (u16, u16) {
         match op {
             Token::Add | Token::Sub => (1, 2),
-            Token::Mul | Token::Div | Token::Mod => (3, 4),
+            Token::Mul | Token::Div | Token::Rem => (3, 4),
             Token::Pow => (5, 6),
-            Token::Differentiate => (7, 8),
             Token::IsEq
             | Token::NEq
             | Token::Gt
             | Token::Lt
             | Token::GtEq
             | Token::LtEq
-            | Token::Belongs => (9, 10),
-            Token::If | Token::Then | Token::Else | Token::End => (11, 12),
+            | Token::Belongs => (7, 8),
+            Token::If | Token::Then | Token::Else | Token::End => (9, 10),
             _ => (0, 0),
         }
     }

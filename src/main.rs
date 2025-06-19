@@ -1,22 +1,23 @@
 mod ast;
-mod errors;
 mod lexer;
 mod parser;
 mod standardlibrary;
 mod token;
+mod types;
 
-use ast::Ast;
+use ast::AstNode;
 use dashmap::DashMap;
 
 use lexer::Lexer;
 use parser::Parser;
 use serde_json::Value;
 use simsearch::{SearchOptions, SimSearch};
-use standardlibrary::StandardLibrary;
 use token::Token;
 use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::*;
 use tower_lsp::{Client, LanguageServer, LspService, Server};
+
+use crate::standardlibrary::{internal_type_map, STD};
 
 #[derive(Debug, Clone)]
 struct Backend {
@@ -158,43 +159,58 @@ impl LanguageServer for Backend {
             .collect::<Vec<String>>()
             .join("\n");
 
-        let mut variables = vec!["π".to_string(), "pi".to_string(), "e".to_string()];
-        let mut functions = vec![];
-        let functions_docs = DashMap::new();
-        let tokens = Token::dictionary();
-        let mut std = StandardLibrary::new();
-        std.init_std();
-        let std_docs = std
-            .map
-            .keys()
+        let mut variables = ["pi", "π", "e"]
+            .iter()
             .map(|f| f.to_string())
             .collect::<Vec<String>>();
 
-        let lex = Lexer::new(file).tokens();
-        Parser::new(lex)
+        let mut functions = vec![];
+        let functions_docs = DashMap::new();
+
+        let tokens = Token::dictionary();
+
+        Parser::new(Lexer::new(file).tokens())
             .ast()
+            .unwrap_or_default()
             .iter()
-            .filter(|f| matches!(f, Ast::Assignment(_, _) | Ast::FunctionDeclaration(_, _, _)))
+            .filter(|f| {
+                matches!(
+                    f,
+                    AstNode::Assignment(..) | AstNode::FunctionDeclaration(..)
+                )
+            })
             .for_each(|f| match f {
-                Ast::Assignment(ident, _) => variables.push(ident.to_string()),
-                Ast::FunctionDeclaration(name, args, expr) => {
+                AstNode::Assignment((ident, _), _) => variables.push(ident.clone()),
+                AstNode::FunctionDeclaration(name, args, return_type, _) => {
                     functions_docs.insert(
                         name.to_string(),
-                        format!("{name} {} = {expr}", args.join(" ")),
+                        format!(
+                            "fn {name}({}): {return_type}",
+                            args.iter()
+                                .map(|(name, r#type)| format!("{name}: {type}"))
+                                .collect::<Vec<String>>()
+                                .join(",")
+                        ),
                     );
                     functions.push(name.to_string());
                 }
                 _ => {}
             });
 
-        let line = param.text_document_position.position.line as usize;
+        let id = param.text_document_position.position.line as usize;
         let character = param.text_document_position.position.character as usize;
-        let line = self.file.get(&line).unwrap().to_string();
+        let line = match self.file.get(&id) {
+            Some(file) => file.to_string(),
+            None => String::new(),
+        };
+
         let mut text = String::new();
+
         for (i, char) in line.split("").enumerate() {
             let c = char.chars().next();
-            if c.is_some() && !c.unwrap().is_ascii_alphabetic() {
-                text = String::new()
+            if c.is_some() && !c.unwrap().is_ascii_alphanumeric() {
+                text = String::new();
+                continue;
             }
             text += char;
             if i == character {
@@ -236,19 +252,37 @@ impl LanguageServer for Backend {
             })
         });
 
-        self.get_closest_match(&text, std_docs)
-            .iter()
-            .for_each(|f| {
-                responses.push(CompletionItem {
-                    label: f.to_string(),
-                    documentation: Some(Documentation::MarkupContent(MarkupContent {
-                        kind: MarkupKind::Markdown,
-                        value: std.map.get(f.to_string().as_str()).unwrap().to_string(),
-                    })),
-                    kind: Some(CompletionItemKind::FUNCTION),
-                    ..Default::default()
-                })
-            });
+        self.get_closest_match(
+            &text,
+            STD.iter().map(|f| f.to_string()).collect::<Vec<String>>(),
+        )
+        .iter()
+        .for_each(|f| {
+            let type_map = internal_type_map(f);
+
+            responses.push(CompletionItem {
+                label: f.to_string(),
+                documentation: Some(Documentation::MarkupContent(MarkupContent {
+                    kind: MarkupKind::Markdown,
+                    value: format!(
+                        "fn {f}({}): {}",
+                        type_map
+                            .0
+                            .iter()
+                            .map(|g| g
+                                .iter()
+                                .map(|h| h.to_string())
+                                .collect::<Vec<String>>()
+                                .join("|"))
+                            .collect::<Vec<String>>()
+                            .join(","),
+                        type_map.1
+                    ),
+                })),
+                kind: Some(CompletionItemKind::FUNCTION),
+                ..Default::default()
+            })
+        });
 
         Ok(Some(CompletionResponse::Array(responses)))
     }
@@ -267,24 +301,30 @@ impl LanguageServer for Backend {
 
         let mut functions = vec![];
         let functions_docs = DashMap::new();
-        let mut std = StandardLibrary::new();
-        std.init_std();
-        let std_docs = std
-            .map
-            .keys()
-            .map(|f| f.to_string())
-            .collect::<Vec<String>>();
 
-        let lex = Lexer::new(file).tokens();
-        Parser::new(lex)
+        let std_docs = STD.map(|f| f.to_string());
+
+        Parser::new(Lexer::new(file).tokens())
             .ast()
+            .unwrap_or_default()
             .iter()
-            .filter(|f| matches!(f, Ast::Assignment(_, _) | Ast::FunctionDeclaration(_, _, _)))
+            .filter(|f| {
+                matches!(
+                    f,
+                    AstNode::Assignment(..) | AstNode::FunctionDeclaration(..)
+                )
+            })
             .for_each(|f| {
-                if let Ast::FunctionDeclaration(name, args, expr) = f {
+                if let AstNode::FunctionDeclaration(name, args, return_type, _) = f {
                     functions_docs.insert(
                         name.to_string(),
-                        format!("{name} {} = {expr}", args.join(" ")),
+                        format!(
+                            "fn {name}({}): {return_type}",
+                            args.iter()
+                                .map(|(name, r#type)| format!("{name}: {type}"))
+                                .collect::<Vec<String>>()
+                                .join(",")
+                        ),
                     );
                     functions.push(name.to_string());
                 }
@@ -298,11 +338,12 @@ impl LanguageServer for Backend {
 
         for (i, char) in line.split("").enumerate() {
             let c = char.chars().next();
-            if c.is_some() && !c.unwrap().is_ascii_alphabetic() {
+            if c.is_some() && !c.unwrap().is_ascii_alphanumeric() {
                 if pos_found {
                     break;
                 }
-                text = String::new()
+                text = String::new();
+                continue;
             }
             text += char;
             if i == character {
@@ -312,8 +353,23 @@ impl LanguageServer for Backend {
 
         let response = if functions.binary_search(&text).is_ok() {
             MarkedString::String(functions_docs.get(&text).unwrap().to_string())
-        } else if std_docs.binary_search(&text).is_ok() {
-            MarkedString::String(std.map.get(text.to_string().as_str()).unwrap().to_string())
+        } else if std_docs.contains(&text.trim().to_string()) {
+            let type_map = internal_type_map(&text);
+
+            MarkedString::String(format!(
+                "fn {text}({}): {}",
+                type_map
+                    .0
+                    .iter()
+                    .map(|g| g
+                        .iter()
+                        .map(|h| h.to_string())
+                        .collect::<Vec<String>>()
+                        .join("|"))
+                    .collect::<Vec<String>>()
+                    .join(","),
+                type_map.1
+            ))
         } else {
             MarkedString::String(String::new())
         };

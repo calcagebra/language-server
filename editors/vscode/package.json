@@ -1,12 +1,12 @@
 {
   "name": "calcagebra",
   "displayName": "calcagebra",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "Language server for calcagebra programming language, providing completion, hover support and syntax highlighting!",
   "publisher": "megatank58",
   "icon": "icon.png",
   "repository": {
-    "url": "https://github.com/megatank58/calcagebra.git",
+    "url": "https://github.com/calcagebra/calcagebra.git",
     "type": "git"
   },
   "license": "MIT License",

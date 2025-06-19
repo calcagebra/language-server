@@ -1,7 +1,3 @@
-radius = 3.14
+fn f(x) = x^3
 
-// aaa
-
-if then else end
-
-print(a)
+print(log10(10))

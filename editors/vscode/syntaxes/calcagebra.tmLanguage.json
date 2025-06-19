@@ -18,7 +18,7 @@
   "repository": {
     "keywords": {
       "name": "keyword.control.calcagebra",
-      "match": "\\b(if|then|else|end)\\b"
+      "match": "\\b(let|fn|if|then|else|end)\\b"
     },
     "variables": {
       "name": "variable.name.calcagebra",
@@ -32,7 +32,7 @@
           "name": "entity.name.function.calcagebra"
         }
       },
-      "end": "\\)",
+      "end": "\\S*\\)",
       "contentName": "entity.other.attribute-name.calcagebra",
       "patterns": [
         {

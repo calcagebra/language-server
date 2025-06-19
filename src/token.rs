@@ -1,16 +1,32 @@
-use std::fmt::Display;
+use std::{fmt::Display, ops::RangeInclusive};
+
+#[derive(Debug, Clone)]
+pub struct TokenInfo {
+    pub token: Token,
+    pub range: RangeInclusive<usize>,
+}
+
+impl TokenInfo {
+    pub fn new(token: Token, range: RangeInclusive<usize>) -> Self {
+        Self { token, range }
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, PartialOrd)]
 pub enum Token {
-    Number(f32),
+    Float(f32),
+    Integer(i32),
     Identifier(String),
 
+    Let,
+    Fn,
     If,
     Then,
     Else,
     End,
 
     Eq,
+
     NEq,
     IsEq,
     Gt,
@@ -23,22 +39,26 @@ pub enum Token {
     Mul,
     Div,
     Pow,
-    Mod,
-    Differentiate,
+    Rem,
 
     Comma,
     Belongs,
     Colon,
+    SemiColon,
     LParen,
     RParen,
+    LSquare,
+    RSquare,
     LCurly,
     RCurly,
-    VLine,
+    Abs,
 }
 
 impl Token {
     pub fn new(token: String) -> Self {
         match token.as_str().trim() {
+            "let" => Token::Let,
+            "fn" => Token::Fn,
             "if" => Token::If,
             "then" => Token::Then,
             "else" => Token::Else,
@@ -52,25 +72,36 @@ impl Token {
             ">=" => Token::GtEq,
             "<=" => Token::LtEq,
 
+            "|" => Token::Abs,
             "+" => Token::Add,
             "-" => Token::Sub,
             "*" => Token::Mul,
             "/" => Token::Div,
             "^" => Token::Pow,
-            "%" => Token::Mod,
-            "`" => Token::Differentiate,
+            "%" => Token::Rem,
 
             "," => Token::Comma,
             "E" => Token::Belongs,
             ":" => Token::Colon,
+            ";" => Token::SemiColon,
             "(" => Token::LParen,
             ")" => Token::RParen,
+            "[" => Token::LSquare,
+            "]" => Token::RSquare,
             "{" => Token::LCurly,
             "}" => Token::RCurly,
-            "|" => Token::VLine,
             _ => {
                 if token.chars().all(|a| a.is_ascii_digit() || a == '.') {
-                    Token::Number(token.parse::<f32>().unwrap())
+                    let try_integer = token.parse::<i32>();
+                    let try_float = token.parse::<f32>();
+
+                    if let Ok(n) = try_integer {
+                        Token::Integer(n)
+                    } else if let Ok(f) = try_float {
+                        Token::Float(f)
+                    } else {
+                        panic!("could not lex number: `{}`", token);
+                    }
                 } else {
                     Token::Identifier(token)
                 }
@@ -79,13 +110,10 @@ impl Token {
     }
 
     pub fn dictionary() -> Vec<String> {
-        vec![
-            "if", "then", "else", "end", "=", "!=", "==", ">", "<", ">=", "<=", "+", "-", "*", "/",
-            "^", "%", "`", ",", "E", ":", "(", ")", "{", "}", "|",
-        ]
-        .iter()
-        .map(|f| f.to_string())
-        .collect::<Vec<String>>()
+        ["let", "fn", "if", "then", "else", "end"]
+            .iter()
+            .map(|f| f.to_string())
+            .collect::<Vec<String>>()
     }
 }
 
@@ -95,8 +123,11 @@ impl Display for Token {
             f,
             "{}",
             match self {
-                Token::Number(n) => n.to_string(),
+                Token::Integer(n) => n.to_string(),
+                Token::Float(n) => n.to_string(),
                 Token::Identifier(ident) => ident.to_string(),
+                Token::Let => "let".to_string(),
+                Token::Fn => "fn".to_string(),
                 Token::If => "if".to_string(),
                 Token::Then => "then".to_string(),
                 Token::Else => "else".to_string(),
@@ -108,21 +139,23 @@ impl Display for Token {
                 Token::Lt => "<".to_string(),
                 Token::GtEq => ">=".to_string(),
                 Token::LtEq => "<=".to_string(),
+                Token::Abs => "|".to_string(),
                 Token::Add => "+".to_string(),
                 Token::Sub => "-".to_string(),
                 Token::Mul => "*".to_string(),
                 Token::Div => "/".to_string(),
                 Token::Pow => "^".to_string(),
-                Token::Mod => "%".to_string(),
-                Token::Differentiate => "`".to_string(),
+                Token::Rem => "%".to_string(),
                 Token::Comma => ",".to_string(),
                 Token::Belongs => "E".to_string(),
                 Token::Colon => ":".to_string(),
+                Token::SemiColon => ";".to_string(),
                 Token::LParen => "(".to_string(),
                 Token::RParen => ")".to_string(),
+                Token::LSquare => "[".to_string(),
+                Token::RSquare => "]".to_string(),
                 Token::LCurly => "{".to_string(),
                 Token::RCurly => "}".to_string(),
-                Token::VLine => "|".to_string(),
             }
         )
     }
