@@ -1,14 +1,16 @@
+use std::ops::RangeInclusive;
 use crate::{standardlibrary::{self, STD}, token::Token, types::NumberType};
 
-#[derive(Debug, Clone, PartialEq, PartialOrd)]
+#[derive(Debug, Clone, PartialEq)]
 
 pub enum AstNode {
 	Assignment((String, Option<NumberType>), Expression),
 	FunctionCall(String, Vec<Expression>),
 	FunctionDeclaration(String, Vec<(String, NumberType)>, NumberType, Expression),
+	Error(String, RangeInclusive<usize>),
 }
 
-#[derive(Debug, Clone, PartialEq, PartialOrd)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Expression {
 	Abs(Box<Expression>),
 	Binary(Box<Expression>, Token, Box<Expression>),
@@ -18,6 +20,7 @@ pub enum Expression {
 	Real(f32),
 	Matrix(Vec<Vec<Expression>>),
 	FunctionCall(String, Vec<Expression>),
+	Error
 }
 
 impl Expression {
@@ -57,6 +60,7 @@ impl Expression {
 					None
 				}
 			}
+			Expression::Error => None
 		}
 	}
 }

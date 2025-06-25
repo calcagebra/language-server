@@ -19,7 +19,7 @@ impl Parser {
         let mut ast = vec![];
         let lines = &self.tokens;
 
-        for line in lines {
+        'main: for line in lines {
             let mut tokens = line.iter().peekable();
 
             let identifier = tokens.next()?;
@@ -27,6 +27,11 @@ impl Parser {
             match identifier.token {
                 Token::Let => {
                     let mut datatype = None;
+
+                    let name = match &tokens.next()?.token {
+                        Token::Identifier(name) => name,
+                        _ => unreachable!(),
+                    };
 
                     if tokens.peek()?.token == Token::Colon {
                         tokens.next();
@@ -38,16 +43,19 @@ impl Parser {
                         } else {
                             let tokeninfo = tokens.next()?;
 
-                            todo!()
+                            ast.push(AstNode::Error(
+                                "Syntax Error: expected datatype after `:`".to_string(),
+                                tokeninfo.range.clone(),
+                            ));
+
+                            continue;
                         }
                     }
 
-                    let name = match &tokens.next()?.token {
-                        Token::Identifier(name) => name,
-                        _ => unreachable!(),
-                    };
-
-                    tokens.next(); // `=`
+                    if tokens.next().is_none() || tokens.peek().is_none() {
+                        // `=`
+                        continue;
+                    }
 
                     let (expr, _, range) = self.pratt_parser(tokens, 0);
 
@@ -59,7 +67,15 @@ impl Parser {
 
                     if let Some(expression_type) = expr_type {
                         if expr_type? != datatype? {
-                            todo!()
+                            ast.push(AstNode::Error(
+                                format!(
+                                    "Type Error: expected {} found {expression_type}",
+                                    datatype?
+                                ),
+                                range,
+                            ));
+
+                            continue;
                         }
                     }
 
@@ -101,7 +117,12 @@ impl Parser {
                             } else {
                                 let tokeninfo = tokens.next()?;
 
-                                todo!()
+                                ast.push(AstNode::Error(
+                                    "Syntax Error: expected datatype after `:`".to_string(),
+                                    tokeninfo.range.clone(),
+                                ));
+
+                                continue 'main;
                             }
                         }
 
@@ -124,14 +145,18 @@ impl Parser {
                         } else {
                             let tokeninfo = tokens.next()?;
 
-                            todo!()
+                            ast.push(AstNode::Error(
+                                "Syntax Error: expected datatype after `:`".to_string(),
+                                tokeninfo.range.clone(),
+                            ));
+
+                            continue;
                         }
                     }
 
-                    let tokeninfo = tokens.next()?;
-
-                    if tokeninfo.token != Token::Eq {
-                        todo!()
+                    if tokens.next().is_none() || tokens.peek().is_none() {
+                        // `=`
+                        continue;
                     }
 
                     let (expr, _, range) = self.pratt_parser(tokens, 0);
@@ -140,7 +165,15 @@ impl Parser {
 
                     if let Some(expression_type) = expr_type {
                         if expr_type? != return_type? {
-                            todo!()
+                            ast.push(AstNode::Error(
+                                format!(
+                                    "Type Error: expected {} found {expression_type}",
+                                    return_type?
+                                ),
+                                range,
+                            ));
+
+                            continue;
                         }
                     }
 
@@ -174,6 +207,10 @@ impl Parser {
         Peekable<Iter<'b, TokenInfo>>,
         RangeInclusive<usize>,
     ) {
+        if tokens.peek().is_none() {
+            return (Expression::Error, tokens, 0..=0)
+        }
+
         let tokeninfo = &tokens.next().unwrap();
 
         let token = &tokeninfo.token;

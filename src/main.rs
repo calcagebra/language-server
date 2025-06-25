@@ -5,6 +5,8 @@ mod standardlibrary;
 mod token;
 mod types;
 
+use std::f32::consts::{E, PI};
+
 use ast::AstNode;
 use dashmap::DashMap;
 
@@ -17,7 +19,8 @@ use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::*;
 use tower_lsp::{Client, LanguageServer, LspService, Server};
 
-use crate::standardlibrary::{internal_type_map, STD};
+use crate::standardlibrary::{STD, internal_type_map};
+use crate::types::NumberType;
 
 #[derive(Debug, Clone)]
 struct Backend {
@@ -53,6 +56,11 @@ impl LanguageServer for Backend {
                     }),
                     file_operations: None,
                 }),
+                diagnostic_provider: Some(DiagnosticServerCapabilities::RegistrationOptions(
+                    DiagnosticRegistrationOptions {
+                        ..Default::default()
+                    },
+                )),
                 ..ServerCapabilities::default()
             },
         })
@@ -145,6 +153,94 @@ impl LanguageServer for Backend {
         self.client
             .log_message(MessageType::INFO, "file closed!")
             .await;
+    }
+
+    async fn diagnostic(
+        &self,
+        _: DocumentDiagnosticParams,
+    ) -> Result<DocumentDiagnosticReportResult> {
+        let mut file = self
+            .file
+            .iter()
+            .map(|f| (*f.key(), f.to_string()))
+            .collect::<Vec<(usize, String)>>();
+
+        file.sort_by_key(|k| k.0);
+
+        let file = &file
+            .iter()
+            .map(|(_, v)| v.to_string())
+            .collect::<Vec<String>>()
+            .join("\n");
+
+        let char_per_line = &file.lines().map(|f| f.len() + 1).collect::<Vec<usize>>();
+
+        let mut items = vec![];
+
+        Parser::new(Lexer::new(file).tokens())
+            .ast()
+            .unwrap_or_default()
+            .iter()
+            .filter(|f| matches!(f, AstNode::Error(..)))
+            .for_each(|f| {
+                if let AstNode::Error(message, range) = f {
+                    let (start, end) = range.clone().into_inner();
+
+                    let mut start_line = 0;
+                    let mut start_sum = 0;
+
+                    let mut end_line = 0;
+                    let mut end_sum = 0;
+
+                    for chars in char_per_line {
+                        start_sum += chars;
+                        if start <= start_sum + 1 {
+                            break;
+                        }
+                        start_line += 1;
+                    }
+
+                    for chars in char_per_line {
+                        if end <= end_sum + 1 {
+                            break;
+                        }
+                        end_sum += chars;
+                        end_line += 1;
+                    }
+
+                    items.push(Diagnostic {
+                        range: Range::new(
+                            Position::new(
+                                start_line,
+                                // (start_sum as isize - start as isize)
+                                //     .abs()
+                                //     .try_into()
+                                //     .unwrap(),
+                                0,
+                            ),
+                            Position::new(
+                                end_line,
+                                // (end_sum as isize - end as isize).abs().try_into().unwrap(),
+                                0,
+                            ),
+                        ),
+                        severity: Some(DiagnosticSeverity::ERROR),
+                        message: message.to_string(),
+                        source: Some("calcagebra".to_string()),
+                        ..Default::default()
+                    })
+                }
+            });
+
+        Ok(DocumentDiagnosticReportResult::Report(
+            DocumentDiagnosticReport::Full(RelatedFullDocumentDiagnosticReport {
+                related_documents: None,
+                full_document_diagnostic_report: FullDocumentDiagnosticReport {
+                    result_id: None,
+                    items,
+                },
+            }),
+        ))
     }
 
     async fn completion(&self, param: CompletionParams) -> Result<Option<CompletionResponse>> {
@@ -299,6 +395,12 @@ impl LanguageServer for Backend {
             .collect::<Vec<String>>()
             .join("\n");
 
+        let mut variables = vec![
+            ("pi".to_string(), PI.to_string()),
+            ("π".to_string(), PI.to_string()),
+            ("e".to_string(), E.to_string()),
+        ];
+
         let mut functions = vec![];
         let functions_docs = DashMap::new();
 
@@ -315,6 +417,12 @@ impl LanguageServer for Backend {
                 )
             })
             .for_each(|f| {
+                if let AstNode::Assignment((ident, datatype), _) = f {
+                    variables.push((
+                        ident.clone(),
+                        datatype.unwrap_or(NumberType::Unknown).to_string(),
+                    ))
+                }
                 if let AstNode::FunctionDeclaration(name, args, return_type, _) = f {
                     functions_docs.insert(
                         name.to_string(),
@@ -370,6 +478,9 @@ impl LanguageServer for Backend {
                     .join(","),
                 type_map.1
             ))
+        } else if variables.iter().any(|f| f.0 == text) {
+            let (name, r#type) = variables.iter().find(|f| f.0 == text).unwrap();
+            MarkedString::String(format!("{name}: {type}"))
         } else {
             MarkedString::String(String::new())
         };
