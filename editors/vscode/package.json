@@ -1,7 +1,7 @@
 {
   "name": "calcagebra",
   "displayName": "calcagebra",
-  "version": "2.0.1",
+  "version": "2.1.0",
   "description": "Language server for calcagebra programming language, providing completion, hover support and syntax highlighting!",
   "publisher": "megatank58",
   "icon": "icon.png",
